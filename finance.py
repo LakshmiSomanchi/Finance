@@ -16,16 +16,29 @@ st.set_page_config(
 # For demo, userId can be simulated. In a real app with persistence,
 # you might associate users with specific roles or IDs from an auth system.
 if 'user_id' not in st.session_state:
-    st.session_state['user_id'] = str(uuid.uuid4()) # Generate a random UUID for demo
+    st.session_state['user_id'] = 'Test Finance' # Set user ID as requested
+
 st.sidebar.info(f"Current User ID: `{st.session_state['user_id']}`")
 
 # --- Data Management Functions (In-Memory Pandas DataFrame) ---
 # Data will NOT persist across app restarts or new sessions
 if 'finance_data' not in st.session_state:
-    # Initialize an empty DataFrame if no data is present
-    st.session_state['finance_data'] = pd.DataFrame(columns=[
-        'id', 'Program', 'Category', 'Budget', 'Actual', 'Status', 'LastUpdatedBy', 'created_at'
-    ])
+    # Initialize DataFrame with dummy data
+    data = {
+        'id': [str(uuid.uuid4()) for _ in range(12)],
+        'Program': ['Education', 'Healthcare', 'Education', 'Community Dev', 'Healthcare', 'Education',
+                    'Community Dev', 'Healthcare', 'Education', 'Community Dev', 'Healthcare', 'Education'],
+        'Category': ['Salaries', 'Supplies', 'Rent', 'Travel', 'Salaries', 'Utilities',
+                     'Marketing', 'Training', 'Salaries', 'Supplies', 'Rent', 'Travel'],
+        'Budget': [150000, 20000, 30000, 25000, 100000, 15000, 10000, 5000, 120000, 25000, 35000, 20000],
+        'Actual': [145000, 22000, 28000, 27000, 98000, 14000, 11000, 6000, 115000, 23000, 33000, 21000],
+        'Status': ['Approved', 'Pending Approval', 'Draft', 'Approved', 'Approved', 'Pending Approval',
+                   'Approved', 'Draft', 'Approved', 'Pending Approval', 'Draft', 'Rejected'],
+        'LastUpdatedBy': ['user123', 'Test Finance', 'user456', 'user123', 'user456', 'Test Finance',
+                          'user123', 'user456', 'Test Finance', 'user123', 'user456', 'Test Finance'],
+        'created_at': [datetime.now().isoformat() for _ in range(12)]
+    }
+    st.session_state['finance_data'] = pd.DataFrame(data)
 
 # Function to fetch all budget data (from session state)
 def get_budgets():
