@@ -14,19 +14,20 @@ st.set_page_config(
 )
 
 # --- Global User ID (for demo purposes) ---
-# For demo, userId can be simulated. In a real app with persistence,
-# you might associate users with specific roles or IDs from an auth system.
+# This is a Phase 1 blueprint. In a production environment,
+# real user authentication would determine the user ID.
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = 'Test Finance' # Set user ID as requested
 
 st.sidebar.info(f"Current User ID: `{st.session_state['user_id']}`")
 
 # --- Data Management Functions (In-Memory Pandas DataFrame) ---
-# Data will NOT persist across app restarts or new sessions
-# This is a Phase 1 blueprint, and the data presented here is arbitrary.
+# This is a Phase 1 blueprint. Data will NOT persist across app restarts or new sessions.
+# All data (financial and KRA/KPI) is arbitrary for demonstration purposes.
+
 if 'finance_data' not in st.session_state:
-    # Initialize DataFrame with dummy data
-    data = {
+    # Initialize DataFrame with dummy financial data
+    financial_dummy_data = {
         'id': [str(uuid.uuid4()) for _ in range(30)], # Increased number of entries
         'Program': [
             'Education', 'Education', 'Education', 'Healthcare', 'Healthcare', 'Healthcare',
@@ -72,7 +73,31 @@ if 'finance_data' not in st.session_state:
         ],
         'created_at': [datetime.now().isoformat() for _ in range(30)]
     }
-    st.session_state['finance_data'] = pd.DataFrame(data)
+    st.session_state['finance_data'] = pd.DataFrame(financial_dummy_data)
+
+if 'kpi_data' not in st.session_state:
+    # Initialize DataFrame with dummy KRA/KPI data
+    kpi_dummy_data = {
+        'id': [str(uuid.uuid4()) for _ in range(8)],
+        'name': [
+            'Reduce Operational Costs (Education)', 'Increase Beneficiary Reach (Healthcare)',
+            'Improve Community Engagement (Community Dev)', 'Greenr - Achieve Carbon Neutrality (RG1)',
+            'PMU - Dairy Yield Improvement', 'PMU - Cotton Quality Index',
+            'PMU - Coffee Farmer Income Growth', 'PMU - Turmeric Production Increase'
+        ],
+        'associated_program': [
+            'Education', 'Healthcare', 'Community Dev', 'Greenr - RG1',
+            'PMU - Dairy Dev', 'PMU - Cotton', 'PMU - Coffee', 'PMU - Turmeric'
+        ],
+        'target_value': [100000, 5000, 80, 100, 10000, 0.9, 0.15, 50000], # Arbitrary targets
+        'actual_value': [95000, 4800, 75, 90, 9500, 0.85, 0.12, 48000], # Arbitrary actuals
+        'unit': ['₹', 'Beneficiaries', '% Participation', '% of Target', 'Litres/Day', 'Index', '% Growth', 'Kg'],
+        'status': ['On Track', 'On Track', 'At Risk', 'At Risk', 'On Track', 'At Risk', 'On Track', 'On Track'],
+        'last_updated_by': ['user123', 'Test Finance', 'user789', 'Test Finance', 'user456', 'user123', 'Test Finance', 'user789'],
+        'created_at': [datetime.now().isoformat() for _ in range(8)]
+    }
+    st.session_state['kpi_data'] = pd.DataFrame(kpi_dummy_data)
+
 
 # Function to fetch all budget data (from session state)
 def get_budgets():
@@ -113,6 +138,43 @@ def delete_budget(doc_id):
         st.warning(f"Entry with ID {doc_id} not found for deletion.")
     st.rerun() # Rerun to update UI immediately
 
+# Function to fetch all KPI data (from session state)
+def get_kpis():
+    return st.session_state['kpi_data']
+
+# Function to add/update KPI entry (in session state)
+def add_or_update_kpi(doc_id=None, **data):
+    current_df = st.session_state['kpi_data']
+    if doc_id:
+        if doc_id in current_df['id'].values:
+            idx = current_df[current_df['id'] == doc_id].index[0]
+            for key, value in data.items():
+                current_df.loc[idx, key] = value
+            st.success(f"KPI entry updated successfully! (ID: {doc_id})")
+        else:
+            st.error(f"Error: KPI entry with ID {doc_id} not found for update.")
+    else:
+        new_id = str(uuid.uuid4())
+        new_entry = {
+            'id': new_id,
+            'created_at': datetime.now().isoformat(),
+            **data
+        }
+        st.session_state['kpi_data'] = pd.concat([current_df, pd.DataFrame([new_entry])], ignore_index=True)
+        st.success("New KPI entry added successfully!")
+    st.rerun()
+
+# Function to delete KPI entry (from session state)
+def delete_kpi(doc_id):
+    current_df = st.session_state['kpi_data']
+    initial_rows = len(current_df)
+    st.session_state['kpi_data'] = current_df[current_df['id'] != doc_id].reset_index(drop=True)
+    if len(st.session_state['kpi_data']) < initial_rows:
+        st.success(f"KPI entry (ID: {doc_id}) deleted successfully!")
+    else:
+        st.warning(f"KPI entry with ID {doc_id} not found for deletion.")
+    st.rerun()
+
 
 # --- Streamlit UI ---
 
@@ -120,7 +182,7 @@ st.title("💰 TechnoServe India: Finance & Budget Dashboard")
 st.markdown("""
 Welcome to the TechnoServe India Finance and Budget Tracking Dashboard.
 This dashboard supports a Maker-Checker-Approver workflow for budget management.
-**Note: Data is not persistent and will reset when the app restarts.**
+**Note: This is a Phase 1 blueprint. Data is arbitrary and not persistent; it will reset when the app restarts.**
 """)
 
 # --- User Role Selection (Simulation) ---
@@ -131,10 +193,11 @@ selected_role = st.sidebar.radio(
     index=0 # Default to Viewer
 )
 
-# Load data using the in-memory function
+# Load data using the in-memory functions
 finance_df = get_budgets()
+kpi_df = get_kpis()
 
-# Ensure numeric columns are correct type after loading (important for calculations)
+# Ensure numeric columns for financial data are correct type after loading (important for calculations)
 if not finance_df.empty:
     finance_df['Budget'] = pd.to_numeric(finance_df['Budget'], errors='coerce').fillna(0)
     finance_df['Actual'] = pd.to_numeric(finance_df['Actual'], errors='coerce').fillna(0)
@@ -146,27 +209,44 @@ if not finance_df.empty:
         0.0 # If Budget is 0, Variance (%) is 0.0
     )
 
+# Ensure numeric columns for KPI data are correct type
+if not kpi_df.empty:
+    kpi_df['target_value'] = pd.to_numeric(kpi_df['target_value'], errors='coerce').fillna(0)
+    kpi_df['actual_value'] = pd.to_numeric(kpi_df['actual_value'], errors='coerce').fillna(0)
+    kpi_df['Progress (%)'] = np.where(
+        kpi_df['target_value'] != 0,
+        ((kpi_df['actual_value'] / kpi_df['target_value']) * 100).round(2),
+        0.0
+    )
+
+
 # --- Sidebar Filters ---
 st.sidebar.subheader("Filter Dashboard")
 all_programs = ['All Programs'] + sorted(finance_df['Program'].unique().tolist()) if not finance_df.empty and 'Program' in finance_df.columns else ['All Programs']
 selected_program = st.sidebar.selectbox("Filter by Program:", all_programs)
 
-# Filter dataframe based on selected program
-filtered_df = finance_df.copy()
+# Filter financial dataframe based on selected program
+filtered_finance_df = finance_df.copy()
 if selected_program != 'All Programs':
-    filtered_df = filtered_df[filtered_df['Program'] == selected_program]
+    filtered_finance_df = filtered_finance_df[filtered_finance_df['Program'] == selected_program]
+
+# Filter KPI dataframe based on selected program
+filtered_kpi_df = kpi_df.copy()
+if selected_program != 'All Programs':
+    filtered_kpi_df = filtered_kpi_df[filtered_kpi_df['associated_program'] == selected_program]
+
 
 # --- Main Dashboard Content ---
 st.header("Overall Financial Overview")
 
-if filtered_df.empty:
-    st.info("No data available for the selected filters. Please add some budget entries.")
+if filtered_finance_df.empty:
+    st.info("No financial data available for the selected filters. Please add some budget entries.")
 else:
     col1, col2, col3 = st.columns(3)
 
-    total_budget = filtered_df['Budget'].sum()
-    total_actual = filtered_df['Actual'].sum()
-    total_variance = filtered_df['Variance'].sum()
+    total_budget = filtered_finance_df['Budget'].sum()
+    total_actual = filtered_finance_df['Actual'].sum()
+    total_variance = filtered_finance_df['Variance'].sum()
 
     with col1:
         st.metric(label="Total Budgeted", value=f"₹{total_budget:,.2f}")
@@ -180,7 +260,7 @@ else:
     # --- Charts ---
     st.subheader("Budget vs. Actuals by Category")
     fig_budget_actual = px.bar(
-        filtered_df.groupby('Category')[['Budget', 'Actual']].sum().reset_index(),
+        filtered_finance_df.groupby('Category')[['Budget', 'Actual']].sum().reset_index(),
         x='Category',
         y=['Budget', 'Actual'],
         barmode='group',
@@ -194,7 +274,7 @@ else:
 
     st.subheader("Variance Analysis by Category")
     fig_variance = px.bar(
-        filtered_df.groupby('Category')['Variance'].sum().reset_index(),
+        filtered_finance_df.groupby('Category')['Variance'].sum().reset_index(),
         x='Category',
         y='Variance',
         color='Variance',
@@ -205,6 +285,19 @@ else:
     )
     fig_variance.update_layout(xaxis_title="Expense Category", yaxis_title="Variance (₹)")
     st.plotly_chart(fig_variance, use_container_width=True)
+
+st.markdown("---")
+st.header("Key Results & Performance Indicators (KRAs/KPIs)")
+
+if filtered_kpi_df.empty:
+    st.info("No KRA/KPI data available for the selected program. Please add some KPI entries.")
+else:
+    st.subheader("KPI Progress Overview")
+    for index, row in filtered_kpi_df.iterrows():
+        st.write(f"**{row['name']}** (Program: {row['associated_program']})")
+        st.progress(min(float(row['Progress (%)']) / 100, 1.0), text=f"Progress: {row['Progress (%)']:.2f}% (Actual: {row['actual_value']:,} {row['unit']} / Target: {row['target_value']:,} {row['unit']})")
+        st.markdown(f"<small>Status: **{row['status']}** | Last Updated By: {row['last_updated_by']}</small>", unsafe_allow_html=True)
+        st.markdown("---")
 
 
 # --- Role-Based Functionality ---
@@ -218,23 +311,21 @@ if selected_role == 'Maker':
         st.write("Enter details for a new budget item or select an existing one to edit.")
 
         # Dropdown to select existing entry for editing
-        # Ensure 'id' column exists before trying to access it
-        existing_entries = ['']
+        existing_finance_ids = ['']
         if not finance_df.empty and 'id' in finance_df.columns:
-            existing_entries += sorted(finance_df['id'].unique().tolist())
-        selected_doc_id = st.selectbox("Select entry to Edit (leave blank for new):", existing_entries)
+            existing_finance_ids += sorted(finance_df['id'].unique().tolist())
+        selected_doc_id = st.selectbox("Select budget entry to Edit (leave blank for new):", existing_finance_ids, key="budget_edit_select")
 
         initial_data = {}
         if selected_doc_id and not finance_df.empty:
-            # Load existing data for editing
             initial_data = finance_df[finance_df['id'] == selected_doc_id].iloc[0].to_dict()
 
-        program = st.text_input("Program Name:", value=initial_data.get('Program', ''))
-        category = st.text_input("Category (e.g., Salaries, Travel):", value=initial_data.get('Category', ''))
-        budget = st.number_input("Budget Amount (₹):", min_value=0.0, value=float(initial_data.get('Budget', 0.0)))
-        actual = st.number_input("Actual Spent (₹):", min_value=0.0, value=float(initial_data.get('Actual', 0.0)))
+        program = st.text_input("Program Name:", value=initial_data.get('Program', ''), key="budget_program_input")
+        category = st.text_input("Category (e.g., Salaries, Travel):", value=initial_data.get('Category', ''), key="budget_category_input")
+        budget = st.number_input("Budget Amount (₹):", min_value=0.0, value=float(initial_data.get('Budget', 0.0)), key="budget_amount_input")
+        actual = st.number_input("Actual Spent (₹):", min_value=0.0, value=float(initial_data.get('Actual', 0.0)), key="actual_spent_input")
 
-        submit_button = st.form_submit_button("Save Budget Entry")
+        submit_button = st.form_submit_button("Save Budget Entry", key="save_budget_button")
 
         if submit_button:
             if not program or not category:
@@ -249,25 +340,96 @@ if selected_role == 'Maker':
                     "LastUpdatedBy": st.session_state['user_id']
                 }
                 add_or_update_budget(doc_id=selected_doc_id, **entry_data)
-                # After saving, potentially allow Maker to submit for review
-                # The button should be within the form if it modifies form data directly,
-                # but here it's an action on a saved item, so it's placed separately.
-                # However, for simplicity and to avoid complex state management,
-                # we'll put a placeholder and suggest a better approach.
-                pass # Moved the submission logic outside the form's immediate submit block for clarity
+    
+    # Maker can submit for review after saving
+    st.write("---")
+    st.subheader("Submit Budget for Review")
+    if not finance_df.empty:
+        maker_submittable_entries = finance_df[
+            (finance_df['LastUpdatedBy'] == st.session_state['user_id']) &
+            ((finance_df['Status'] == 'Draft') | (finance_df['Status'] == 'Rejected'))
+        ]
+        if not maker_submittable_entries.empty:
+            submit_select_id = st.selectbox(
+                "Select a budget entry to submit for Checker Review:",
+                [''] + maker_submittable_entries['id'].tolist(),
+                key="submit_budget_select"
+            )
+            if st.button(f"Submit Selected Budget ({submit_select_id}) for Review", key="submit_budget_button"):
+                if submit_select_id:
+                    idx = finance_df[finance_df['id'] == submit_select_id].index[0]
+                    st.session_state['finance_data'].loc[idx, 'Status'] = "Pending Approval"
+                    st.success(f"Budget entry '{submit_select_id}' submitted for review!")
+                    st.rerun()
+                else:
+                    st.warning("Please select an entry to submit.")
+        else:
+            st.info("No draft or rejected budget entries available for submission.")
 
-    if selected_doc_id and selected_doc_id in finance_df['id'].tolist():
-        # Check if the selected item is in a state where it can be submitted
-        item_status = finance_df[finance_df['id'] == selected_doc_id]['Status'].iloc[0]
-        if item_status == 'Draft' or item_status == 'Rejected': # Allow maker to resubmit if rejected
-            if st.button(f"Submit '{selected_doc_id}' for Checker Review"):
-                idx = finance_df[finance_df['id'] == selected_doc_id].index[0]
-                st.session_state['finance_data'].loc[idx, 'Status'] = "Pending Approval"
-                st.success("Entry submitted for review!")
-                st.rerun() # Refresh
 
+    st.subheader("Manage KRAs/KPIs")
+    with st.form("kpi_entry_form", clear_on_submit=True):
+        st.write("Enter details for a new KPI or select an existing one to edit.")
 
-    st.subheader("Your Draft and Pending Entries")
+        existing_kpi_ids = ['']
+        if not kpi_df.empty and 'id' in kpi_df.columns:
+            existing_kpi_ids += sorted(kpi_df['id'].unique().tolist())
+        selected_kpi_id = st.selectbox("Select KPI to Edit (leave blank for new):", existing_kpi_ids, key="kpi_edit_select")
+
+        initial_kpi_data = {}
+        if selected_kpi_id and not kpi_df.empty:
+            initial_kpi_data = kpi_df[kpi_df['id'] == selected_kpi_id].iloc[0].to_dict()
+
+        kpi_name = st.text_input("KPI Name:", value=initial_kpi_data.get('name', ''), key="kpi_name_input")
+        # Ensure available programs are based on financial data
+        available_programs = sorted(finance_df['Program'].unique().tolist()) if not finance_df.empty else []
+        selected_kpi_program = st.selectbox(
+            "Associated Program:",
+            [''] + available_programs,
+            index=available_programs.index(initial_kpi_data.get('associated_program')) + 1 if initial_kpi_data.get('associated_program') in available_programs else 0,
+            key="kpi_program_select"
+        )
+        target_value = st.number_input("Target Value:", min_value=0.0, value=float(initial_kpi_data.get('target_value', 0.0)), key="kpi_target_input")
+        actual_value = st.number_input("Actual Value:", min_value=0.0, value=float(initial_kpi_data.get('actual_value', 0.0)), key="kpi_actual_input")
+        unit = st.text_input("Unit (e.g., ₹, %, Beneficiaries):", value=initial_kpi_data.get('unit', ''), key="kpi_unit_input")
+        
+        submit_kpi_button = st.form_submit_button("Save KPI Entry", key="save_kpi_button")
+
+        if submit_kpi_button:
+            if not kpi_name or not selected_kpi_program or not unit:
+                st.warning("KPI Name, Associated Program, and Unit cannot be empty.")
+            else:
+                kpi_entry_data = {
+                    "name": kpi_name,
+                    "associated_program": selected_kpi_program,
+                    "target_value": target_value,
+                    "actual_value": actual_value,
+                    "unit": unit,
+                    "status": "On Track" if actual_value >= target_value else "At Risk", # Simple status logic
+                    "last_updated_by": st.session_state['user_id']
+                }
+                add_or_update_kpi(doc_id=selected_kpi_id, **kpi_entry_data)
+    
+    st.subheader("Your KPI Entries")
+    if not kpi_df.empty:
+        maker_kpis = kpi_df[kpi_df['last_updated_by'] == st.session_state['user_id']]
+        if not maker_kpis.empty:
+            st.dataframe(maker_kpis[['name', 'associated_program', 'target_value', 'actual_value', 'unit', 'Progress (%)', 'status', 'id']].style.format({
+                'target_value': "{:,.2f}", 'actual_value': "{:,.2f}", 'Progress (%)': "{:.2f}%"
+            }), use_container_width=True)
+
+            st.markdown("---")
+            st.write("Delete your own KPI entries:")
+            delete_kpi_id = st.text_input("Enter ID of KPI entry to delete:", key="maker_delete_kpi_id")
+            if st.button("Delete Selected KPI Entry", key="maker_delete_kpi_button"):
+                if delete_kpi_id and delete_kpi_id in maker_kpis['id'].tolist():
+                    delete_kpi(delete_kpi_id)
+                else:
+                    st.warning("Invalid ID or you don't have permission to delete this KPI entry.")
+        else:
+            st.info("You currently have no KPI entries.")
+
+    st.subheader("Your Draft and Pending Budget Entries")
     if not finance_df.empty:
         maker_entries = finance_df[(finance_df['LastUpdatedBy'] == st.session_state['user_id']) &
                                     ((finance_df['Status'] == 'Draft') | (finance_df['Status'] == 'Pending Approval') | (finance_df['Status'] == 'Rejected'))] # Maker can see rejected too
@@ -278,7 +440,7 @@ if selected_role == 'Maker':
 
             # Option to delete own entries
             st.markdown("---")
-            st.write("Delete your own draft or pending/rejected entries:")
+            st.write("Delete your own draft or pending/rejected budget entries:")
             delete_id = st.text_input("Enter ID of entry to delete:", key="maker_delete_id") # Added unique key
             if st.button("Delete Selected Entry", key="maker_delete_button"): # Added unique key
                 if delete_id and delete_id in maker_entries['id'].tolist():
@@ -383,6 +545,14 @@ else: # Viewer role
             st.info("No budget entries have been approved yet.")
     else:
         st.info("No budget data available.")
+
+    st.subheader("All Defined KRAs/KPIs")
+    if not kpi_df.empty:
+        st.dataframe(kpi_df[['name', 'associated_program', 'target_value', 'actual_value', 'unit', 'Progress (%)', 'status', 'id']].style.format({
+            'target_value': "{:,.2f}", 'actual_value': "{:,.2f}", 'Progress (%)': "{:.2f}%"
+        }), use_container_width=True)
+    else:
+        st.info("No KRA/KPI data has been defined yet.")
 
 
 # --- Footer ---
