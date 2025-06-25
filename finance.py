@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 import uuid # For generating unique IDs for documents
+import numpy as np # Added numpy for robust calculations
 
 # --- Streamlit Configuration ---
 st.set_page_config(
@@ -105,8 +106,12 @@ if not finance_df.empty:
     finance_df['Budget'] = pd.to_numeric(finance_df['Budget'], errors='coerce').fillna(0)
     finance_df['Actual'] = pd.to_numeric(finance_df['Actual'], errors='coerce').fillna(0)
     finance_df['Variance'] = finance_df['Actual'] - finance_df['Budget']
-    # Avoid division by zero for Variance (%)
-    finance_df['Variance (%)'] = finance_df.apply(lambda row: (row['Variance'] / row['Budget'] * 100).round(2) if row['Budget'] != 0 else 0.0, axis=1)
+    # Calculate Variance (%) using numpy.where for robust handling of division by zero
+    finance_df['Variance (%)'] = np.where(
+        finance_df['Budget'] != 0,
+        ((finance_df['Variance'] / finance_df['Budget']) * 100).round(2),
+        0.0 # If Budget is 0, Variance (%) is 0.0
+    )
 
 # --- Sidebar Filters ---
 st.sidebar.subheader("Filter Dashboard")
