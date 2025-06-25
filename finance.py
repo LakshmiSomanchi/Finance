@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from firebase_admin import credentials, firestore, initialize_app
+from google.cloud import firestore # Changed from firebase_admin
 from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 import json
@@ -9,23 +9,30 @@ import uuid # For generating unique IDs for documents if needed
 
 
 # --- Initialize Firebase (if not already initialized) ---
-# Check if Firebase app is already initialized to prevent re-initialization errors
-if not st.session_state.get('firebase_initialized', False):
+# Check if Firestore client is already initialized to prevent re-initialization errors
+if not st.session_state.get('firestore_initialized', False): # Changed flag name
     try:
         # Load Firebase config from global variable __firebase_config
         # This variable is provided by the Canvas environment
-        firebase_config = json.loads(st.secrets["__firebase_config"]) # Access from st.secrets
+        firebase_config_str = st.secrets["__firebase_config"] # Access from st.secrets
+        firebase_config = json.loads(firebase_config_str)
 
-        # Initialize Firebase Admin SDK
-        cred = credentials.Certificate(firebase_config)
-        initialize_app(cred)
-        db = firestore.client()
-        st.session_state['firebase_initialized'] = True
+        # Initialize Firestore client using the project_id from config
+        # The 'project' argument is usually sufficient if running in an environment
+        # with default credentials or if GOOGLE_APPLICATION_CREDENTIALS env var is set.
+        # If running locally, ensure you have authenticated with `gcloud auth application-default login`
+        project_id = firebase_config.get("projectId")
+        if not project_id:
+            st.error("Firebase config does not contain 'projectId'. Cannot initialize Firestore.")
+            st.stop() # Stop execution if critical config is missing
+
+        db = firestore.Client(project=project_id) # Initialize using google-cloud-firestore
+        st.session_state['firestore_initialized'] = True # Changed flag name
         st.session_state['db'] = db # Store db client in session state
-        st.success("Firebase initialized successfully!")
+        st.success("Firestore client initialized successfully!")
     except Exception as e:
-        st.error(f"Error initializing Firebase: {e}")
-        st.warning("Ensure '__firebase_config' is correctly set in your environment variables/secrets.")
+        st.error(f"Error initializing Firestore: {e}")
+        st.warning("Please ensure your Firebase project is properly configured and credentials are accessible (e.g., via `gcloud auth application-default login` if running locally, or proper environment variables in deployment).")
 
 # Ensure db client is available
 db = st.session_state.get('db')
@@ -34,7 +41,7 @@ db = st.session_state.get('db')
 # --- Streamlit Configuration ---
 st.set_page_config(
     page_title="TechnoServe Finance Dashboard",
-    page_icon="📊",
+    page_icon="�",
     layout="wide", # Changed to wide for more content
     initial_sidebar_state="expanded"
 )
