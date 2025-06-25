@@ -7,7 +7,7 @@ import numpy as np # Added numpy for robust calculations
 
 # --- Streamlit Configuration ---
 st.set_page_config(
-    page_title="TechnoServe Finance Dashboard",
+    page_title="TechnoServe India: Finance & Budget Dashboard",
     page_icon="📊",
     layout="wide", # Changed to wide for more content
     initial_sidebar_state="expanded"
@@ -23,21 +23,54 @@ st.sidebar.info(f"Current User ID: `{st.session_state['user_id']}`")
 
 # --- Data Management Functions (In-Memory Pandas DataFrame) ---
 # Data will NOT persist across app restarts or new sessions
+# This is a Phase 1 blueprint, and the data presented here is arbitrary.
 if 'finance_data' not in st.session_state:
     # Initialize DataFrame with dummy data
     data = {
-        'id': [str(uuid.uuid4()) for _ in range(12)],
-        'Program': ['Education', 'Healthcare', 'Education', 'Community Dev', 'Healthcare', 'Education',
-                    'Community Dev', 'Healthcare', 'Education', 'Community Dev', 'Healthcare', 'Education'],
-        'Category': ['Salaries', 'Supplies', 'Rent', 'Travel', 'Salaries', 'Utilities',
-                     'Marketing', 'Training', 'Salaries', 'Supplies', 'Rent', 'Travel'],
-        'Budget': [150000, 20000, 30000, 25000, 100000, 15000, 10000, 5000, 120000, 25000, 35000, 20000],
-        'Actual': [145000, 22000, 28000, 27000, 98000, 14000, 11000, 6000, 115000, 23000, 33000, 21000],
-        'Status': ['Approved', 'Pending Approval', 'Draft', 'Approved', 'Approved', 'Pending Approval',
-                   'Approved', 'Draft', 'Approved', 'Pending Approval', 'Draft', 'Rejected'],
-        'LastUpdatedBy': ['user123', 'Test Finance', 'user456', 'user123', 'user456', 'Test Finance',
-                          'user123', 'user456', 'Test Finance', 'user123', 'user456', 'Test Finance'],
-        'created_at': [datetime.now().isoformat() for _ in range(12)]
+        'id': [str(uuid.uuid4()) for _ in range(30)], # Increased number of entries
+        'Program': [
+            'Education', 'Education', 'Education', 'Healthcare', 'Healthcare', 'Healthcare',
+            'Community Dev', 'Community Dev', 'Community Dev', 'Greenr - RG1', 'Greenr - RG1', 'Greenr - RG2',
+            'Greenr - RG2', 'PMU - Dairy Dev', 'PMU - Dairy Dev', 'PMU - Cotton', 'PMU - Coffee', 'PMU - Turmeric',
+            'Education', 'Healthcare', 'Community Dev', 'Greenr - RG1', 'PMU - Dairy Dev',
+            'PMU - Cotton', 'Education', 'Healthcare', 'Community Dev', 'Greenr - RG2', 'PMU - Coffee', 'PMU - Turmeric'
+        ],
+        'Category': [
+            'Salaries', 'Rent', 'Utilities', 'Salaries', 'Supplies', 'Travel',
+            'Marketing', 'Training', 'Operations', 'IT Services', 'Office Supplies', 'Consulting Fees',
+            'Travel', 'Raw Materials', 'Processing', 'Seed Costs', 'Logistics', 'Packaging',
+            'Salaries', 'Supplies', 'Rent', 'Travel', 'Processing',
+            'Harvesting', 'Utilities', 'Training', 'Marketing', 'IT Services', 'Logistics', 'Raw Materials'
+        ],
+        'Budget': [
+            150000, 30000, 15000, 100000, 20000, 25000,
+            12000, 8000, 20000, 50000, 7000, 40000,
+            18000, 60000, 35000, 22000, 15000, 10000,
+            140000, 25000, 28000, 20000, 38000,
+            24000, 16000, 9000, 13000, 48000, 17000, 11000
+        ],
+        'Actual': [
+            145000, 32000, 14000, 98000, 22000, 27000,
+            11000, 9000, 21000, 52000, 6500, 39000,
+            19000, 58000, 37000, 23000, 16000, 9500,
+            138000, 26000, 27500, 21000, 39000,
+            23500, 15500, 9200, 12500, 47000, 17500, 10500
+        ],
+        'Status': [
+            'Approved', 'Pending Approval', 'Draft', 'Approved', 'Approved', 'Pending Approval',
+            'Approved', 'Draft', 'Approved', 'Pending Approval', 'Draft', 'Approved',
+            'Rejected', 'Approved', 'Pending Approval', 'Draft', 'Approved', 'Approved',
+            'Pending Approval', 'Draft', 'Approved', 'Rejected', 'Pending Approval',
+            'Approved', 'Draft', 'Approved', 'Pending Approval', 'Approved', 'Rejected', 'Approved'
+        ],
+        'LastUpdatedBy': [
+            'user123', 'Test Finance', 'user456', 'user123', 'user456', 'Test Finance',
+            'user789', 'user123', 'Test Finance', 'user456', 'user789', 'Test Finance',
+            'user123', 'user456', 'Test Finance', 'user789', 'user123', 'user456',
+            'Test Finance', 'user789', 'user123', 'Test Finance', 'user456',
+            'user789', 'user123', 'Test Finance', 'user456', 'user789', 'Test Finance', 'user123'
+        ],
+        'created_at': [datetime.now().isoformat() for _ in range(30)]
     }
     st.session_state['finance_data'] = pd.DataFrame(data)
 
