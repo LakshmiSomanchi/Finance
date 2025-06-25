@@ -1,124 +1,70 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from google.cloud import firestore # Changed from firebase_admin
-from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
-import json
-import uuid # For generating unique IDs for documents if needed
-
-
-# --- Initialize Firebase (if not already initialized) ---
-# Check if Firestore client is already initialized to prevent re-initialization errors
-if not st.session_state.get('firestore_initialized', False): # Changed flag name
-    try:
-        # Load Firebase config from global variable __firebase_config
-        # This variable is provided by the Canvas environment
-        firebase_config_str = st.secrets["__firebase_config"] # Access from st.secrets
-        firebase_config = json.loads(firebase_config_str)
-
-        # Initialize Firestore client using the project_id from config
-        # The 'project' argument is usually sufficient if running in an environment
-        # with default credentials or if GOOGLE_APPLICATION_CREDENTIALS env var is set.
-        # If running locally, ensure you have authenticated with `gcloud auth application-default login`
-        project_id = firebase_config.get("projectId")
-        if not project_id:
-            st.error("Firebase config does not contain 'projectId'. Cannot initialize Firestore.")
-            st.stop() # Stop execution if critical config is missing
-
-        db = firestore.Client(project=project_id) # Initialize using google-cloud-firestore
-        st.session_state['firestore_initialized'] = True # Changed flag name
-        st.session_state['db'] = db # Store db client in session state
-        st.success("Firestore client initialized successfully!")
-    except Exception as e:
-        st.error(f"Error initializing Firestore: {e}")
-        st.warning("Please ensure your Firebase project is properly configured and credentials are accessible (e.g., via `gcloud auth application-default login` if running locally, or proper environment variables in deployment).")
-
-# Ensure db client is available
-db = st.session_state.get('db')
-
+import uuid # For generating unique IDs for documents
 
 # --- Streamlit Configuration ---
 st.set_page_config(
     page_title="TechnoServe Finance Dashboard",
-    page_icon="�",
+    page_icon="📊",
     layout="wide", # Changed to wide for more content
     initial_sidebar_state="expanded"
 )
 
-# --- Global App ID and User ID (for Firestore paths) ---
-# __app_id is provided by the Canvas environment
-app_id = st.secrets["__app_id"] # Access from st.secrets
-# For demo, userId can be simulated or obtained from actual authentication
-# In a real app, you would get this from Firebase Auth (e.g., auth.current_user.uid)
+# --- Global User ID (for demo purposes) ---
+# For demo, userId can be simulated. In a real app with persistence,
+# you might associate users with specific roles or IDs from an auth system.
 if 'user_id' not in st.session_state:
     st.session_state['user_id'] = str(uuid.uuid4()) # Generate a random UUID for demo
 st.sidebar.info(f"Current User ID: `{st.session_state['user_id']}`")
 
+# --- Data Management Functions (In-Memory Pandas DataFrame) ---
+# Data will NOT persist across app restarts or new sessions
+if 'finance_data' not in st.session_state:
+    # Initialize an empty DataFrame if no data is present
+    st.session_state['finance_data'] = pd.DataFrame(columns=[
+        'id', 'Program', 'Category', 'Budget', 'Actual', 'Status', 'LastUpdatedBy', 'created_at'
+    ])
 
-# --- Data Management Functions (Firestore) ---
-# Collection path for public data
-BUDGETS_COLLECTION = db.collection(f"artifacts/{app_id}/public/data/budgets") if db else None
+# Function to fetch all budget data (from session state)
+def get_budgets():
+    return st.session_state['finance_data']
 
-# Function to fetch all budget data with real-time listener
-def get_budgets_realtime():
-    if not BUDGETS_COLLECTION:
-        return pd.DataFrame() # Return empty if DB not initialized
-
-    # Use on_snapshot for real-time updates
-    # This will be called initially and whenever the data changes
-    def on_snapshot(col_snapshot, changes, read_time):
-        data = []
-        for doc in col_snapshot.docs:
-            doc_data = doc.to_dict()
-            doc_data['id'] = doc.id # Add document ID
-            data.append(doc_data)
-        st.session_state['finance_data'] = pd.DataFrame(data)
-        st.rerun() # Rerun Streamlit app to update UI
-
-    # Register the listener. The callback `on_snapshot` will update `st.session_state['finance_data']`
-    # and trigger a rerun.
-    # Store the listener in session_state to manage its lifecycle if needed (e.g., to stop it)
-    if 'budget_listener' not in st.session_state:
-        st.session_state['budget_listener'] = BUDGETS_COLLECTION.on_snapshot(on_snapshot)
-
-    # Return the current state data
-    return st.session_state.get('finance_data', pd.DataFrame())
-
-
-# Function to add/update budget entry
+# Function to add/update budget entry (in session state)
 def add_or_update_budget(doc_id=None, **data):
-    if not BUDGETS_COLLECTION:
-        st.error("Database not initialized.")
-        return
-
-    try:
-        if doc_id:
-            # Update existing document
-            doc_ref = BUDGETS_COLLECTION.document(doc_id)
-            doc_ref.update(data)
+    current_df = st.session_state['finance_data']
+    if doc_id:
+        # Update existing document
+        if doc_id in current_df['id'].values:
+            idx = current_df[current_df['id'] == doc_id].index[0]
+            for key, value in data.items():
+                current_df.loc[idx, key] = value
             st.success(f"Budget entry updated successfully! (ID: {doc_id})")
         else:
-            # Add new document
-            doc_ref = BUDGETS_COLLECTION.document() # Let Firestore auto-generate ID
-            doc_ref.set({
-                **data,
-                'created_at': firestore.SERVER_TIMESTAMP # Add timestamp
-            })
-            st.success("New budget entry added successfully!")
-    except Exception as e:
-        st.error(f"Error saving budget entry: {e}")
+            st.error(f"Error: Entry with ID {doc_id} not found for update.")
+    else:
+        # Add new document
+        new_id = str(uuid.uuid4())
+        new_entry = {
+            'id': new_id,
+            'created_at': datetime.now().isoformat(), # Store as ISO format string
+            **data
+        }
+        st.session_state['finance_data'] = pd.concat([current_df, pd.DataFrame([new_entry])], ignore_index=True)
+        st.success("New budget entry added successfully!")
+    st.rerun() # Rerun to update UI immediately
 
-# Function to delete budget entry
+# Function to delete budget entry (from session state)
 def delete_budget(doc_id):
-    if not BUDGETS_COLLECTION:
-        st.error("Database not initialized.")
-        return
-    try:
-        BUDGETS_COLLECTION.document(doc_id).delete()
+    current_df = st.session_state['finance_data']
+    initial_rows = len(current_df)
+    st.session_state['finance_data'] = current_df[current_df['id'] != doc_id].reset_index(drop=True)
+    if len(st.session_state['finance_data']) < initial_rows:
         st.success(f"Budget entry (ID: {doc_id}) deleted successfully!")
-    except Exception as e:
-        st.error(f"Error deleting budget entry: {e}")
+    else:
+        st.warning(f"Entry with ID {doc_id} not found for deletion.")
+    st.rerun() # Rerun to update UI immediately
 
 
 # --- Streamlit UI ---
@@ -127,6 +73,7 @@ st.title("💰 TechnoServe India: Finance & Budget Dashboard")
 st.markdown("""
 Welcome to the TechnoServe India Finance and Budget Tracking Dashboard.
 This dashboard supports a Maker-Checker-Approver workflow for budget management.
+**Note: Data is not persistent and will reset when the app restarts.**
 """)
 
 # --- User Role Selection (Simulation) ---
@@ -137,19 +84,11 @@ selected_role = st.sidebar.radio(
     index=0 # Default to Viewer
 )
 
-# Load data using the real-time listener. This will update st.session_state['finance_data']
-finance_df = get_budgets_realtime()
+# Load data using the in-memory function
+finance_df = get_budgets()
 
-# Ensure required columns exist, especially if no data is present yet
+# Ensure numeric columns are correct type after loading (important for calculations)
 if not finance_df.empty:
-    for col in ['Budget', 'Actual', 'Variance', 'Variance (%)', 'Program', 'Category', 'Status']:
-        if col not in finance_df.columns:
-            if col in ['Budget', 'Actual', 'Variance', 'Variance (%)']:
-                finance_df[col] = 0.0
-            else:
-                finance_df[col] = ''
-
-    # Recalculate derived columns in case of direct updates
     finance_df['Budget'] = pd.to_numeric(finance_df['Budget'], errors='coerce').fillna(0)
     finance_df['Actual'] = pd.to_numeric(finance_df['Actual'], errors='coerce').fillna(0)
     finance_df['Variance'] = finance_df['Actual'] - finance_df['Budget']
@@ -158,7 +97,7 @@ if not finance_df.empty:
 
 # --- Sidebar Filters ---
 st.sidebar.subheader("Filter Dashboard")
-all_programs = ['All Programs'] + sorted(finance_df['Program'].unique().tolist()) if not finance_df.empty else ['All Programs']
+all_programs = ['All Programs'] + sorted(finance_df['Program'].unique().tolist()) if not finance_df.empty and 'Program' in finance_df.columns else ['All Programs']
 selected_program = st.sidebar.selectbox("Filter by Program:", all_programs)
 
 # Filter dataframe based on selected program
@@ -228,11 +167,14 @@ if selected_role == 'Maker':
         st.write("Enter details for a new budget item or select an existing one to edit.")
 
         # Dropdown to select existing entry for editing
-        existing_entries = [''] + sorted(finance_df['id'].unique().tolist()) if not finance_df.empty else ['']
+        # Ensure 'id' column exists before trying to access it
+        existing_entries = ['']
+        if not finance_df.empty and 'id' in finance_df.columns:
+            existing_entries += sorted(finance_df['id'].unique().tolist())
         selected_doc_id = st.selectbox("Select entry to Edit (leave blank for new):", existing_entries)
 
         initial_data = {}
-        if selected_doc_id:
+        if selected_doc_id and not finance_df.empty:
             # Load existing data for editing
             initial_data = finance_df[finance_df['id'] == selected_doc_id].iloc[0].to_dict()
 
@@ -257,17 +199,27 @@ if selected_role == 'Maker':
                 }
                 add_or_update_budget(doc_id=selected_doc_id, **entry_data)
                 # After saving, potentially allow Maker to submit for review
-                if st.button("Submit for Checker Review"):
-                    if selected_doc_id and BUDGETS_COLLECTION:
-                        BUDGETS_COLLECTION.document(selected_doc_id).update({"Status": "Pending Approval"})
-                        st.success("Entry submitted for review!")
-                        st.rerun() # Refresh
+                # The button should be within the form if it modifies form data directly,
+                # but here it's an action on a saved item, so it's placed separately.
+                # However, for simplicity and to avoid complex state management,
+                # we'll put a placeholder and suggest a better approach.
+                pass # Moved the submission logic outside the form's immediate submit block for clarity
+
+    if selected_doc_id and selected_doc_id in finance_df['id'].tolist():
+        # Check if the selected item is in a state where it can be submitted
+        item_status = finance_df[finance_df['id'] == selected_doc_id]['Status'].iloc[0]
+        if item_status == 'Draft' or item_status == 'Rejected': # Allow maker to resubmit if rejected
+            if st.button(f"Submit '{selected_doc_id}' for Checker Review"):
+                idx = finance_df[finance_df['id'] == selected_doc_id].index[0]
+                st.session_state['finance_data'].loc[idx, 'Status'] = "Pending Approval"
+                st.success("Entry submitted for review!")
+                st.rerun() # Refresh
 
 
     st.subheader("Your Draft and Pending Entries")
     if not finance_df.empty:
         maker_entries = finance_df[(finance_df['LastUpdatedBy'] == st.session_state['user_id']) &
-                                    ((finance_df['Status'] == 'Draft') | (finance_df['Status'] == 'Pending Approval'))]
+                                    ((finance_df['Status'] == 'Draft') | (finance_df['Status'] == 'Pending Approval') | (finance_df['Status'] == 'Rejected'))] # Maker can see rejected too
         if not maker_entries.empty:
             st.dataframe(maker_entries[['Program', 'Category', 'Budget', 'Actual', 'Status', 'id']].style.format({
                 'Budget': "₹{:,.2f}", 'Actual': "₹{:,.2f}"
@@ -275,16 +227,15 @@ if selected_role == 'Maker':
 
             # Option to delete own entries
             st.markdown("---")
-            st.write("Delete your own draft or pending entries:")
-            delete_id = st.text_input("Enter ID of entry to delete:")
-            if st.button("Delete Selected Entry"):
+            st.write("Delete your own draft or pending/rejected entries:")
+            delete_id = st.text_input("Enter ID of entry to delete:", key="maker_delete_id") # Added unique key
+            if st.button("Delete Selected Entry", key="maker_delete_button"): # Added unique key
                 if delete_id and delete_id in maker_entries['id'].tolist():
                     delete_budget(delete_id)
-                    st.rerun() # Refresh
                 else:
                     st.warning("Invalid ID or you don't have permission to delete this entry.")
         else:
-            st.info("You currently have no draft or pending budget entries.")
+            st.info("You currently have no draft, pending, or rejected budget entries.")
 
 
 elif selected_role == 'Checker':
@@ -298,25 +249,30 @@ elif selected_role == 'Checker':
 
             st.markdown("---")
             st.write("Action on selected entries:")
-            review_doc_id = st.text_input("Enter ID of entry to review:")
+            review_doc_id = st.text_input("Enter ID of entry to review:", key="checker_review_id") # Added unique key
 
             col_checker_actions = st.columns(2)
             with col_checker_actions[0]:
-                if st.button("Approve for Approver"):
-                    if review_doc_id and BUDGETS_COLLECTION:
-                        BUDGETS_COLLECTION.document(review_doc_id).update({"Status": "Approved by Checker", "CheckerReviewedBy": st.session_state['user_id']})
+                if st.button("Approve for Approver", key="checker_approve_button"): # Added unique key
+                    if review_doc_id and review_doc_id in pending_entries['id'].tolist():
+                        idx = finance_df[finance_df['id'] == review_doc_id].index[0]
+                        st.session_state['finance_data'].loc[idx, 'Status'] = "Approved by Checker"
+                        st.session_state['finance_data'].loc[idx, 'CheckerReviewedBy'] = st.session_state['user_id']
                         st.success("Entry approved by Checker, awaiting final approval!")
                         st.rerun()
                     else:
-                        st.warning("Please enter a valid entry ID.")
+                        st.warning("Please enter a valid entry ID that is 'Pending Approval'.")
             with col_checker_actions[1]:
-                if st.button("Send Back to Maker"):
-                    if review_doc_id and BUDGETS_COLLECTION:
-                        BUDGETS_COLLECTION.document(review_doc_id).update({"Status": "Draft", "CheckerComments": "Needs revision by Maker", "CheckerReviewedBy": st.session_state['user_id']})
+                if st.button("Send Back to Maker", key="checker_sendback_button"): # Added unique key
+                    if review_doc_id and review_doc_id in pending_entries['id'].tolist():
+                        idx = finance_df[finance_df['id'] == review_doc_id].index[0]
+                        st.session_state['finance_data'].loc[idx, 'Status'] = "Draft"
+                        st.session_state['finance_data'].loc[idx, 'CheckerComments'] = "Needs revision by Maker"
+                        st.session_state['finance_data'].loc[idx, 'CheckerReviewedBy'] = st.session_state['user_id']
                         st.info("Entry sent back to Maker for revisions.")
                         st.rerun()
                     else:
-                        st.warning("Please enter a valid entry ID.")
+                        st.warning("Please enter a valid entry ID that is 'Pending Approval'.")
         else:
             st.info("No budget entries are currently pending review.")
     else:
@@ -335,25 +291,29 @@ elif selected_role == 'Approver':
 
             st.markdown("---")
             st.write("Action on selected entries:")
-            approve_doc_id = st.text_input("Enter ID of entry to approve/reject:")
+            approve_doc_id = st.text_input("Enter ID of entry to approve/reject:", key="approver_approve_id") # Added unique key
 
             col_approver_actions = st.columns(2)
             with col_approver_actions[0]:
-                if st.button("Final Approve"):
-                    if approve_doc_id and BUDGETS_COLLECTION:
-                        BUDGETS_COLLECTION.document(approve_doc_id).update({"Status": "Approved", "ApprovedBy": st.session_state['user_id']})
+                if st.button("Final Approve", key="approver_final_approve_button"): # Added unique key
+                    if approve_doc_id and approve_doc_id in entries_for_approval['id'].tolist():
+                        idx = finance_df[finance_df['id'] == approve_doc_id].index[0]
+                        st.session_state['finance_data'].loc[idx, 'Status'] = "Approved"
+                        st.session_state['finance_data'].loc[idx, 'ApprovedBy'] = st.session_state['user_id']
                         st.success("Budget entry **Approved**!")
                         st.rerun()
                     else:
-                        st.warning("Please enter a valid entry ID.")
+                        st.warning("Please enter a valid entry ID for approval.")
             with col_approver_actions[1]:
-                if st.button("Reject"):
-                    if approve_doc_id and BUDGETS_COLLECTION:
-                        BUDGETS_COLLECTION.document(approve_doc_id).update({"Status": "Rejected", "RejectedBy": st.session_state['user_id']})
+                if st.button("Reject", key="approver_reject_button"): # Added unique key
+                    if approve_doc_id and approve_doc_id in entries_for_approval['id'].tolist():
+                        idx = finance_df[finance_df['id'] == approve_doc_id].index[0]
+                        st.session_state['finance_data'].loc[idx, 'Status'] = "Rejected"
+                        st.session_state['finance_data'].loc[idx, 'RejectedBy'] = st.session_state['user_id']
                         st.error("Budget entry **Rejected**.")
                         st.rerun()
                     else:
-                        st.warning("Please enter a valid entry ID.")
+                        st.warning("Please enter a valid entry ID for rejection.")
         else:
             st.info("No budget entries are currently awaiting final approval.")
     else:
@@ -376,5 +336,5 @@ else: # Viewer role
 
 # --- Footer ---
 st.markdown("""
-<br><hr><center><i>Powered by Streamlit & Firestore</i></center>
+<br><hr><center><i>Powered by Streamlit</i></center>
 """, unsafe_allow_html=True)
